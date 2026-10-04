@@ -1019,8 +1019,14 @@
 
   </div>
 
-  <script>
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@libsql/client/web';
     const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+    const turso = createClient({
+      url: "libsql://rjlpg-jeffryq.aws-ap-northeast-1.turso.io",
+      authToken: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTEwOTI2MDQsImlkIjoiMDFhMTA1NzAtMDYwMS03YWRmLTgyYWItOTNiZTI1ZTdmN2NmIiwia2lkIjoiaS1DVWdNc0VVWWZCVFIxQ3ZpbGF3VW82UWsxbVdNcVhSQjIyajJDWGI3TSIsInJpZCI6ImEyMTIzZjJlLTE4YjktNGYwMi04ZjI2LTZkYTNhOTE5MWM5YSJ9.C2O3nTphXQObxCC694IUa2Scd5hDxDV_xxIHjuw1jNNVeG-Weov03sfgtFDcm_m0-S-R_Orn03yCBD8LSd2nCg"
+    });
 
     createApp({
       setup() {
@@ -1157,19 +1163,53 @@
             inventory: inventory.value,
             transactions: transactions.value
           };
-          localStorage.setItem('rj_app_data', JSON.stringify(dataToSave));
+          const jsonData = JSON.stringify(dataToSave);
+          
+          // Cache locally
+          localStorage.setItem('rj_app_data', jsonData);
           localStorage.setItem('rj_app_pin', localOwnerPin.value);
+
+          // Sync to Turso database in the background
+          turso.execute({
+            sql: `INSERT INTO rj_app_state (id, app_data, pin) VALUES ('main', ?, ?)
+                  ON CONFLICT(id) DO UPDATE SET app_data = excluded.app_data, pin = excluded.pin`,
+            args: [jsonData, localOwnerPin.value]
+          }).catch(err => console.error('Turso DB sync error:', err));
         };
 
         const generateId = (prefix) => prefix + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
 
-        const loadSystemData = () => {
+        const loadSystemData = async () => {
           isLoading.value = true;
           
-          setTimeout(() => {
-            const savedData = localStorage.getItem('rj_app_data');
-            const savedPin = localStorage.getItem('rj_app_pin');
+          try {
+            // Ensure table exists in Turso
+            await turso.execute(`
+              CREATE TABLE IF NOT EXISTS rj_app_state (
+                id TEXT PRIMARY KEY,
+                app_data TEXT,
+                pin TEXT
+              )
+            `);
             
+            // Try fetching from Turso first
+            const rs = await turso.execute(`SELECT app_data, pin FROM rj_app_state WHERE id = 'main'`);
+            
+            let savedData = null;
+            let savedPin = null;
+
+            if (rs.rows.length > 0) {
+              savedData = rs.rows[0].app_data;
+              savedPin = rs.rows[0].pin;
+              // Cache locally
+              if (savedData) localStorage.setItem('rj_app_data', savedData);
+              if (savedPin) localStorage.setItem('rj_app_pin', savedPin);
+            } else {
+              // Fallback to local storage if Turso is empty
+              savedData = localStorage.getItem('rj_app_data');
+              savedPin = localStorage.getItem('rj_app_pin');
+            }
+
             if (savedPin) localOwnerPin.value = savedPin;
 
             if (savedData) {
@@ -1185,7 +1225,7 @@
                 { 'Product ID': 'PRD-101', 'Category': 'LPG Tank', 'Name': 'Standard Refill', 'Weight (KG)': 11, 'Unit Capital (PHP)': 600, 'Selling Price (PHP)': 850, 'Active Status': true }
               ];
               inventory.value = [{ 'Store ID': 'STR-001', 'Product ID': 'PRD-101', 'Full Stock Qty': 50, 'Empty Tanks Qty': 10, 'Assigned Status': true }];
-              saveToLocalStorage();
+              saveToLocalStorage(); // This will save defaults to both local and Turso
             }
 
             catalogList.value = products.value.map(p => ({
@@ -1201,9 +1241,22 @@
             if (!activeStoreId.value && stores.value.length > 0) {
               activeStoreId.value = stores.value[0]['Store ID'];
             }
-            
+          } catch (error) {
+             console.error("Database connection failed, running with local storage cache:", error);
+             // Offline fallback logic
+             const fallbackData = localStorage.getItem('rj_app_data');
+             if (fallbackData) {
+                const parsed = JSON.parse(fallbackData);
+                stores.value = parsed.stores || [];
+                products.value = parsed.products || [];
+                inventory.value = parsed.inventory || [];
+                transactions.value = parsed.transactions || [];
+             }
+             const fallbackPin = localStorage.getItem('rj_app_pin');
+             if (fallbackPin) localOwnerPin.value = fallbackPin;
+          } finally {
             isLoading.value = false;
-          }, 300); // Simulate network latency
+          }
         };
 
         const selectStore = (id) => {
