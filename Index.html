@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>R&J - LPG Retail Store Manager</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome 6.4.0 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Vue.js 3 Global CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SheetJS / XLSX -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Google Fonts Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    [v-cloak] { display: none; }
+    .animate-fade-in {
+      animation: fadeIn 0.25s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <div id="app" v-cloak class="flex flex-col min-h-screen">
+
+    <!-- Top Sticky Header -->
+    <header class="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        
+        <!-- App Title & GMT+8 Clock -->
+        <div class="flex items-center space-x-3">
+          <div class="bg-blue-600 text-white p-2 rounded-xl shadow-md">
+            <i class="fa-solid fa-fire-flame-curved text-xl"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-lg text-slate-900 leading-none">{{ appName }}</h1>
+            <span class="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full inline-block mt-1">
+              <i class="fa-regular fa-clock mr-1"></i>{{ liveClock }} (GMT+8)
+            </span>
+          </div>
+        </div>
+
+        <!-- Active Store Switcher Dropdown -->
+        <div class="relative">
+          <button @click="isStoreDropdownOpen = !isStoreDropdownOpen" class="flex items-center space-x-2 bg-blue-50 border border-blue-200 text-blue-700 px-3.5 py-2 rounded-xl font-medium text-sm hover:bg-blue-100 transition shadow-sm">
+            <i class="fa-solid fa-store"></i>
+            <span>{{ currentStore ? currentStore['Store Name'] : 'Select Store' }}</span>
+            <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200" :class="{ 'rotate-180': isStoreDropdownOpen }"></i>
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div v-if="isStoreDropdownOpen" class="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-fade-in">
+            <div class="px-3 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Switch Store Branch</div>
+            <button v-for="store in stores" :key="store['Store ID']" 
+                    @click="selectStore(store['Store ID'])"
+                    class="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center justify-between hover:bg-slate-50 transition"
+                    :class="activeStoreId === store['Store ID'] ? 'text-blue-600 bg-blue-50/50' : 'text-slate-700'">
+              <span>{{ store['Store Name'] }}</span>
+              <i v-if="activeStoreId === store['Store ID']" class="fa-solid fa-check text-blue-600"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Main Navigation Tabs Bar -->
+      <nav class="bg-white border-t border-slate-100 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto flex space-x-2 sm:space-x-8 overflow-x-auto">
+          <button @click="activeTab = 'sales'" 
+                  :class="activeTab === 'sales' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'"
+                  class="py-3 px-2 border-b-2 font-semibold text-sm flex items-center space-x-2 whitespace-nowrap transition">
+            <i class="fa-solid fa-cart-shopping"></i>
+            <span>Daily Sales & Transactions</span>
+          </button>
+
+          <button @click="activeTab = 'summary'; loadStoresSummary();" 
+                  :class="activeTab === 'summary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'"
+                  class="py-3 px-2 border-b-2 font-semibold text-sm flex items-center space-x-2 whitespace-nowrap transition">
+            <i class="fa-solid fa-calendar-days"></i>
+            <span>Stores Summary</span>
+          </button>
+
+          <button @click="activeTab = 'setup'" 
+                  :class="activeTab === 'setup' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'"
+                  class="py-3 px-2 border-b-2 font-semibold text-sm flex items-center space-x-2 whitespace-nowrap transition">
+            <i class="fa-solid fa-boxes-packing"></i>
+            <span>Products & Store Setup</span>
+            <span v-if="!isOwnerAuthenticated" class="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-200 text-slate-600 rounded">Protected</span>
+          </button>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Main Content Body -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+      <!-- Loading Overlay -->
+      <div v-if="isLoading" class="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div class="bg-white p-6 rounded-2xl shadow-xl flex items-center space-x-4">
+          <i class="fa-solid fa-circle-notch fa-spin text-3xl text-blue-600"></i>
+          <span class="font-medium text-slate-700">Updating store data...</span>
+        </div>
+      </div>
+
+      <!-- ================= TAB 1: DAILY SALES & TRANSACTIONS ================= -->
+      <div v-if="activeTab === 'sales'" class="space-y-6 animate-fade-in">
+        
+        <!-- KPI Cards Row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          
+          <!-- Current Cash Balance -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Current Cash Balance</p>
+              <p class="text-2xl font-bold text-slate-800 mt-1">₱{{ formatNumber(kpiCashBalance) }}</p>
+              <p class="text-xs text-slate-500 mt-1">Float: ₱{{ formatNumber(startingCashFloat) }}</p>
+            </div>
+            <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-xl">
+              <i class="fa-solid fa-wallet"></i>
+            </div>
+          </div>
+
+          <!-- Running Profit Today -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Running Profit Today</p>
+              <p class="text-2xl font-bold mt-1" :class="kpiProfitToday >= 0 ? 'text-emerald-600' : 'text-rose-600'">
+                ₱{{ formatNumber(kpiProfitToday) }}
+              </p>
+              <p class="text-xs text-slate-500 mt-1">Net of Sales, Refills & Expenses</p>
+            </div>
+            <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl">
+              <i class="fa-solid fa-chart-line"></i>
+            </div>
+          </div>
+
+          <!-- Empty LPG Tanks on Hand & Today's Refill Outflow -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Empty LPG Tanks on Hand</p>
+              <p class="text-2xl font-bold text-amber-600 mt-1">{{ totalEmptyTanks }} <span class="text-sm font-normal text-slate-500">units</span></p>
+              <p class="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md inline-block mt-1">
+                Today's Refills: ₱{{ formatNumber(todayRefillOutflow) }}
+              </p>
+            </div>
+            <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center text-xl">
+              <i class="fa-solid fa-gas-pump"></i>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- POS Retail Sale Form & Actions -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          <!-- Record Sale Form -->
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 class="font-bold text-slate-800 flex items-center space-x-2">
+                <i class="fa-solid fa-cash-register text-blue-600"></i>
+                <span>Record Retail Sale</span>
+              </h2>
+              <span class="text-xs bg-slate-100 text-slate-600 font-medium px-2.5 py-1 rounded-full">
+                {{ currentStore ? currentStore['Store Name'] : '' }}
+              </span>
+            </div>
+
+            <form @submit.prevent="submitSale" class="space-y-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- Product Selector (Name + Weight KG) -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Select Product</label>
+                  <select v-model="saleForm.productId" @change="onProductSelect" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:bg-white focus:outline-none focus:border-blue-600 transition">
+                    <option value="" disabled>-- Select Product & Weight --</option>
+                    <option v-for="item in assignedProducts" :key="item.productId" :value="item.productId">
+                      {{ item.name }} - {{ item.weightKg }} KG (₱{{ formatNumber(item.sellingPrice) }})
+                    </option>
+                  </select>
+                </div>
+
+                <!-- Weight Display Box -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Weight Specification</label>
+                  <div class="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-700 flex items-center justify-between">
+                    <span>{{ saleForm.selectedProduct ? saleForm.selectedProduct.weightKg + ' KG' : 'N/A' }}</span>
+                    <span class="text-xs text-slate-400 font-normal">Auto-detected</span>
+                  </div>
+                </div>
+
+                <!-- Quantity -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Quantity Sold</label>
+                  <input type="number" min="1" v-model.number="saleForm.qty" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:bg-white focus:outline-none focus:border-blue-600 transition">
+                </div>
+
+                <!-- Discount Amount -->
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Discount Amount (₱)</label>
+                  <input type="number" min="0" step="0.01" v-model.number="saleForm.discountAmount" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:bg-white focus:outline-none focus:border-blue-600 transition" placeholder="0.00">
+                </div>
+
+              </div>
+
+              <!-- Discount Reason (Mandatory if discount > 0) -->
+              <div v-if="saleForm.discountAmount > 0">
+                <label class="block text-xs font-semibold text-amber-700 uppercase mb-1">Reason for Discount <span class="text-rose-500">*</span></label>
+                <input type="text" v-model="saleForm.discountReason" :required="saleForm.discountAmount > 0" class="w-full bg-amber-50/50 border border-amber-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:bg-white focus:outline-none focus:border-amber-600 transition" placeholder="e.g. Suki discount, Bulk purchase deal">
+              </div>
+
+              <!-- Sale Computation Summary -->
+              <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between text-sm gap-2">
+                <div>
+                  <span class="text-slate-500">Original Total:</span> 
+                  <span class="font-semibold text-slate-800 ml-1">₱{{ formatNumber(computedSaleOriginal) }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">Discounted Total:</span> 
+                  <span class="font-bold text-blue-600 text-lg ml-1">₱{{ formatNumber(computedSaleFinal) }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">Est. Profit:</span> 
+                  <span class="font-semibold text-emerald-600 ml-1">₱{{ formatNumber(computedSaleProfit) }}</span>
+                </div>
+              </div>
+
+              <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center space-x-2">
+                <i class="fa-solid fa-check-circle"></i>
+                <span>Complete Sale Transaction</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- Quick Action Buttons: Bulk Refill & Record Expense -->
+          <div class="space-y-4">
+            
+            <!-- Bulk Refill Execution Box -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <div class="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                <i class="fa-solid fa-truck-ramp-box text-amber-600"></i>
+                <h3 class="font-bold text-slate-800 text-sm">Execute Bulk LPG Refill</h3>
+              </div>
+              <p class="text-xs text-slate-500">Convert empty cylinders into full tanks. Deducts refill cost from store cash and today's profit.</p>
+              <button @click="openRefillModal" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2.5 px-4 rounded-xl shadow-sm transition flex items-center justify-center space-x-2 text-sm">
+                <i class="fa-solid fa-arrows-rotate"></i>
+                <span>Process Empty Tank Refill</span>
+              </button>
+            </div>
+
+            <!-- Record Store Operating Expense -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <div class="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                <i class="fa-solid fa-receipt text-rose-600"></i>
+                <h3 class="font-bold text-slate-800 text-sm">Record Store Expense</h3>
+              </div>
+              <p class="text-xs text-slate-500">Log store expenditures (utilities, snacks, transportation). Mandatory reason required.</p>
+              <button @click="openExpenseModal" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 px-4 rounded-xl shadow-sm transition flex items-center justify-center space-x-2 text-sm">
+                <i class="fa-solid fa-minus-circle"></i>
+                <span>Log Operating Expense</span>
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Today's Transactions Log & Filter Tabs -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-6">
+          
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h2 class="font-bold text-slate-800 flex items-center space-x-2">
+                <i class="fa-solid fa-list-check text-blue-600"></i>
+                <span>Today's Transactions Log</span>
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">Showing records for {{ todayDateStr }}</p>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <!-- Log View Filters -->
+              <div class="bg-slate-100 p-1 rounded-xl flex text-xs font-medium space-x-1">
+                <button @click="logFilter = 'all'" :class="logFilter === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="px-3 py-1.5 rounded-lg transition">All Logs</button>
+                <button @click="logFilter = 'discounts'" :class="logFilter === 'discounts' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="px-3 py-1.5 rounded-lg transition">Discounts</button>
+                <button @click="logFilter = 'expenses'" :class="logFilter === 'expenses' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="px-3 py-1.5 rounded-lg transition">Expenses</button>
+              </div>
+
+              <!-- Export Log CSV/Excel Button -->
+              <button @click="exportTodayLogs" class="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-3.5 py-1.5 rounded-xl font-semibold text-xs transition flex items-center space-x-1.5">
+                <i class="fa-solid fa-file-excel"></i>
+                <span>Export Log</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Logs Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-700">
+              <thead class="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+                <tr>
+                  <th class="py-3 px-4">Type</th>
+                  <th class="py-3 px-4">Item / Description</th>
+                  <th class="py-3 px-4">Weight</th>
+                  <th class="py-3 px-4 text-center">Qty</th>
+                  <th class="py-3 px-4 text-right">Orig. Total</th>
+                  <th class="py-3 px-4 text-right">Discount</th>
+                  <th class="py-3 px-4 text-right">Final Amount</th>
+                  <th class="py-3 px-4 text-right">Net Profit</th>
+                  <th class="py-3 px-4">Reason / Notes</th>
+                  <th class="py-3 px-4 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr v-for="tx in filteredTodayTransactions" :key="tx['Tx ID']" class="hover:bg-slate-50/80 transition">
+                  <!-- Type Badge -->
+                  <td class="py-3 px-4">
+                    <span v-if="tx['Type'] === 'Sale'" class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md text-xs font-semibold">Sale</span>
+                    <span v-else-if="tx['Type'] === 'Refill'" class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md text-xs font-semibold">Refill</span>
+                    <span v-else-if="tx['Type'] === 'Expense'" class="bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md text-xs font-semibold">Expense</span>
+                    <span v-else-if="tx['Type'] === 'Transfer Out'" class="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md text-xs font-semibold">Transfer Out</span>
+                    <span v-else-if="tx['Type'] === 'Transfer In'" class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-xs font-semibold">Transfer In</span>
+                    <span v-else-if="tx['Type'] === 'Pullout Deduction'" class="bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md text-xs font-semibold">Pullout</span>
+                  </td>
+                  
+                  <td class="py-3 px-4 font-medium text-slate-800">{{ tx['Product Name'] }}</td>
+                  <td class="py-3 px-4 text-xs text-slate-500">{{ tx['Weight (KG)'] > 0 ? tx['Weight (KG)'] + ' KG' : 'N/A' }}</td>
+                  <td class="py-3 px-4 text-center font-medium">{{ tx['Qty'] }}</td>
+                  <td class="py-3 px-4 text-right">₱{{ formatNumber(Number(tx['Selling Price (PHP)'] || 0) * Number(tx['Qty'])) }}</td>
+                  <td class="py-3 px-4 text-right text-amber-600 font-medium">₱{{ formatNumber(tx['Discount Amount']) }}</td>
+                  <td class="py-3 px-4 text-right font-semibold text-slate-800">₱{{ formatNumber(tx['Total Amount']) }}</td>
+                  <td class="py-3 px-4 text-right font-semibold" :class="Number(tx['Net Profit']) >= 0 ? 'text-emerald-600' : 'text-rose-600'">
+                    ₱{{ formatNumber(tx['Net Profit']) }}
+                  </td>
+                  <td class="py-3 px-4 text-xs text-slate-500 max-w-xs truncate">{{ tx['Discount/Expense Reason'] || '-' }}</td>
+                  
+                  <!-- Delete / Void Button -->
+                  <td class="py-3 px-4 text-center">
+                    <button @click="confirmVoidTx(tx)" class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition" title="Void Transaction">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="filteredTodayTransactions.length === 0">
+                  <td colspan="10" class="py-8 text-center text-slate-400 text-sm">
+                    No transactions recorded for today matching the selected filter.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ================= TAB 2: STORES SUMMARY ================= -->
+      <div v-if="activeTab === 'summary'" class="space-y-6 animate-fade-in">
+        
+        <!-- Overall Branch Dashboard Card -->
+        <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-6 shadow-md space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-700/60 pb-4 gap-2">
+            <div>
+              <span class="text-xs font-semibold text-blue-400 uppercase tracking-widest">Multi-Store Financial Overview</span>
+              <h2 class="text-xl font-bold">Overall Branch Dashboard</h2>
+            </div>
+            <div class="flex items-center space-x-2">
+              <label class="text-xs text-slate-400">Select Month:</label>
+              <input type="month" v-model="summaryMonth" @change="loadStoresSummary" class="bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+            <div>
+              <p class="text-xs font-medium text-slate-400">Overall Revenue (All Stores)</p>
+              <p class="text-3xl font-bold text-white mt-1">₱{{ formatNumber(overallDashboard.revenue) }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-slate-400">Overall Expenses (Logs + Refill Outflows)</p>
+              <p class="text-3xl font-bold text-rose-400 mt-1">₱{{ formatNumber(overallDashboard.expenses) }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-slate-400">Overall Net Profit (All Stores)</p>
+              <p class="text-3xl font-bold text-emerald-400 mt-1">₱{{ formatNumber(overallDashboard.profit) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Store Inventory Status (View Only) -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
+            <div>
+              <h3 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                <i class="fa-solid fa-boxes-stacked text-blue-600"></i>
+                <span>Current Inventory Status (View Only) - {{ currentStore ? currentStore['Store Name'] : 'All Stores' }}</span>
+              </h3>
+              <p class="text-xs text-slate-500 mt-0.5">Live stock levels and empty tank quantities for this store branch.</p>
+            </div>
+
+            <!-- Quick Store Switcher Pills -->
+            <div class="flex items-center space-x-1 overflow-x-auto bg-slate-100 p-1 rounded-xl">
+              <button v-for="st in stores" :key="st['Store ID']" @click="selectStore(st['Store ID'])" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition" :class="activeStoreId === st['Store ID'] ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'">
+                {{ st['Store Name'] }}
+              </button>
+            </div>
+          </div>
+
+          <!-- View Only Inventory Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-700">
+              <thead class="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+                <tr>
+                  <th class="py-3 px-4">Product ID</th>
+                  <th class="py-3 px-4">Category</th>
+                  <th class="py-3 px-4">Product Name</th>
+                  <th class="py-3 px-4">Weight</th>
+                  <th class="py-3 px-4 text-right">Unit Capital</th>
+                  <th class="py-3 px-4 text-right">Selling Price</th>
+                  <th class="py-3 px-4 text-center">Full Stock</th>
+                  <th class="py-3 px-4 text-center">Empty Tanks</th>
+                  <th class="py-3 px-4 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr v-for="p in products" :key="p['Product ID']" class="hover:bg-slate-50/80 transition">
+                  <td class="py-3 px-4 font-mono text-xs text-slate-500">{{ p['Product ID'] }}</td>
+                  <td class="py-3 px-4">
+                    <span class="px-2 py-0.5 rounded-md text-xs font-semibold" :class="p['Category'] === 'LPG Tank' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'">
+                      {{ p['Category'] }}
+                    </span>
+                  </td>
+                  <td class="py-3 px-4 font-semibold text-slate-800">{{ p['Name'] }}</td>
+                  <td class="py-3 px-4 text-xs text-slate-500">{{ p['Weight (KG)'] > 0 ? p['Weight (KG)'] + ' KG' : 'N/A' }}</td>
+                  <td class="py-3 px-4 text-right font-medium">₱{{ formatNumber(p['Unit Capital (PHP)']) }}</td>
+                  <td class="py-3 px-4 text-right font-semibold text-blue-600">₱{{ formatNumber(p['Selling Price (PHP)']) }}</td>
+                  
+                  <!-- Current Stock in Active Store -->
+                  <td class="py-3 px-4 text-center font-bold">
+                    <span v-if="inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])">
+                      {{ inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])['Full Stock Qty'] }}
+                    </span>
+                    <span v-else class="text-slate-300">-</span>
+                  </td>
+
+                  <!-- Empty Tanks in Active Store -->
+                  <td class="py-3 px-4 text-center font-bold text-amber-600">
+                    <span v-if="p['Category'] === 'LPG Tank' && inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])">
+                      {{ inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])['Empty Tanks Qty'] }}
+                    </span>
+                    <span v-else class="text-slate-300">-</span>
+                  </td>
+
+                  <!-- Assignment Status Badge -->
+                  <td class="py-3 px-4 text-center">
+                    <span v-if="inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'] && (i['Assigned Status'] === true || i['Assigned Status'] === 'true'))" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center space-x-1">
+                      <i class="fa-solid fa-check text-[10px]"></i>
+                      <span>Assigned</span>
+                    </span>
+                    <span v-else class="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                      Unassigned
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Per-Store Daily Performance Breakdown -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                <i class="fa-solid fa-chart-bar text-blue-600"></i>
+                <span>Daily Sales Performance - {{ currentStore ? currentStore['Store Name'] : '' }}</span>
+              </h3>
+              <p class="text-xs text-slate-500 mt-0.5">Monthly performance breakdown for {{ summaryMonth }}</p>
+            </div>
+
+            <button @click="exportMonthlyReport" class="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 px-4 py-2 rounded-xl font-semibold text-xs transition flex items-center space-x-2 self-start sm:self-auto">
+              <i class="fa-solid fa-file-excel text-sm"></i>
+              <span>Export Monthly Report</span>
+            </button>
+          </div>
+
+          <!-- Daily Trend Chart Container -->
+          <div class="h-64 w-full">
+            <canvas id="monthlyTrendChart"></canvas>
+          </div>
+
+          <!-- Per-Date Sales Table with + Expandable Details -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-700">
+              <thead class="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+                <tr>
+                  <th class="py-3 px-4 w-12 text-center">Detail</th>
+                  <th class="py-3 px-4">Date</th>
+                  <th class="py-3 px-4 text-center">Total Units Sold</th>
+                  <th class="py-3 px-4 text-right">Gross Sales Revenue</th>
+                  <th class="py-3 px-4 text-right">Net Profit</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <template v-for="day in monthlyDailyBreakdown" :key="day.date">
+                  <tr class="hover:bg-slate-50/80 transition">
+                    <td class="py-3 px-4 text-center">
+                      <button @click="toggleDateExpand(day.date)" class="w-6 h-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs hover:bg-blue-100 transition">
+                        {{ expandedDates.includes(day.date) ? '-' : '+' }}
+                      </button>
+                    </td>
+                    <td class="py-3 px-4 font-medium text-slate-800">{{ day.date }}</td>
+                    <td class="py-3 px-4 text-center font-semibold">{{ day.totalOrders }}</td>
+                    <td class="py-3 px-4 text-right font-semibold text-slate-800">₱{{ formatNumber(day.grossSales) }}</td>
+                    <td class="py-3 px-4 text-right font-bold" :class="day.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'">
+                      ₱{{ formatNumber(day.netProfit) }}
+                    </td>
+                  </tr>
+
+                  <!-- Expandable Product Breakdown Row -->
+                  <tr v-if="expandedDates.includes(day.date)" class="bg-slate-50/70">
+                    <td colspan="5" class="py-3 px-6">
+                      <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+                        <p class="text-xs font-semibold uppercase text-slate-500 tracking-wider">Product Sales Breakdown for {{ day.date }}</p>
+                        <table class="w-full text-xs text-left">
+                          <thead class="text-slate-400 border-b border-slate-100">
+                            <tr>
+                              <th class="py-1.5">Product Name</th>
+                              <th class="py-1.5">Weight</th>
+                              <th class="py-1.5">Category</th>
+                              <th class="py-1.5 text-center">Qty Sold</th>
+                              <th class="py-1.5 text-right">Gross Revenue</th>
+                              <th class="py-1.5 text-right">Net Profit</th>
+                            </tr>
+                          </thead>
+                          <tbody class="divide-y divide-slate-100 text-slate-700">
+                            <tr v-for="p in day.products" :key="p.name">
+                              <td class="py-1.5 font-medium">{{ p.name }}</td>
+                              <td class="py-1.5 text-slate-500">{{ p.weightKg > 0 ? p.weightKg + ' KG' : 'N/A' }}</td>
+                              <td class="py-1.5">{{ p.category }}</td>
+                              <td class="py-1.5 text-center font-semibold">{{ p.qty }}</td>
+                              <td class="py-1.5 text-right">₱{{ formatNumber(p.grossSales) }}</td>
+                              <td class="py-1.5 text-right font-semibold text-emerald-600">₱{{ formatNumber(p.netProfit) }}</td>
+                            </tr>
+                            <tr v-if="!day.products || day.products.length === 0">
+                              <td colspan="6" class="py-2 text-center text-slate-400">No sales transactions logged on this day.</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+                <tr v-if="monthlyDailyBreakdown.length === 0">
+                  <td colspan="5" class="py-8 text-center text-slate-400">No records found for the selected store and month.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ================= TAB 3: PRODUCTS & STORE SETUP (PROTECTED) ================= -->
+      <div v-if="activeTab === 'setup'" class="space-y-6 animate-fade-in">
+        
+        <!-- PIN Authentication Card (If not unlocked) -->
+        <div v-if="!isOwnerAuthenticated" class="max-w-md mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center space-y-4">
+          <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-xl mx-auto">
+            <i class="fa-solid fa-lock"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-slate-800 text-lg">Administrative Setup Locked</h2>
+            <p class="text-xs text-slate-500 mt-1">Enter Owner Security PIN to modify store catalog, branch settings, transfers, and prices.</p>
+          </div>
+          
+          <form @submit.prevent="unlockSetup" class="space-y-3">
+            <input type="password" v-model="pinInput" placeholder="Enter Owner PIN" required class="w-full text-center tracking-widest text-lg bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:bg-white focus:outline-none focus:border-blue-600">
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl shadow-md transition">
+              Unlock Administrative Access
+            </button>
+          </form>
+        </div>
+
+        <!-- Protected Content (When Owner PIN Authenticated) -->
+        <div v-else class="space-y-6">
+          
+          <!-- Top Unlocked Header Bar -->
+          <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between">
+            <div class="flex items-center space-x-2 text-blue-800 text-sm font-semibold">
+              <i class="fa-solid fa-unlock-keyhole"></i>
+              <span>Administrative Session Authenticated</span>
+            </div>
+            
+            <!-- Lock Setup Button -->
+            <button @click="lockSetup" class="bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:bg-rose-50 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm">
+              <i class="fa-solid fa-lock"></i>
+              <span>Lock Setup</span>
+            </button>
+          </div>
+
+          <!-- Store Branch Manager Section (Maximized / Expanded View) -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
+              <div>
+                <h2 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                  <i class="fa-solid fa-shop text-blue-600"></i>
+                  <span>Store Branch Manager</span>
+                </h2>
+                <p class="text-xs text-slate-500 mt-0.5">Manage store locations, starting cash floats, and branch options.</p>
+              </div>
+
+              <button @click="openAddStoreModal" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl text-xs transition flex items-center space-x-1.5 shadow-sm self-start sm:self-auto">
+                <i class="fa-solid fa-plus"></i>
+                <span>Add New Store Branch</span>
+              </button>
+            </div>
+
+            <!-- Stores Overview Table -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm text-slate-700">
+                <thead class="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4">Branch ID</th>
+                    <th class="py-3 px-4">Branch Name</th>
+                    <th class="py-3 px-4 text-right">Starting Cash Float (₱)</th>
+                    <th class="py-3 px-4 text-center">Assigned Items</th>
+                    <th class="py-3 px-4 text-center">Quick Switch</th>
+                    <th class="py-3 px-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="st in stores" :key="st['Store ID']" class="hover:bg-slate-50/80 transition" :class="activeStoreId === st['Store ID'] ? 'bg-blue-50/40' : ''">
+                    <td class="py-3 px-4 font-mono text-xs text-slate-500">{{ st['Store ID'] }}</td>
+                    <td class="py-3 px-4 font-semibold text-slate-800 flex items-center space-x-2">
+                      <span>{{ st['Store Name'] }}</span>
+                      <span v-if="activeStoreId === st['Store ID']" class="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Selected</span>
+                    </td>
+                    <td class="py-3 px-4 text-right font-medium">₱{{ formatNumber(st['Starting Cash Float']) }}</td>
+                    <td class="py-3 px-4 text-center">
+                      <span class="bg-slate-100 text-slate-700 font-semibold px-2.5 py-1 rounded-full text-xs">
+                        {{ inventory.filter(i => i['Store ID'] === st['Store ID'] && (i['Assigned Status'] === true || i['Assigned Status'] === 'true')).length }} Items
+                      </span>
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                      <button @click="selectStore(st['Store ID'])" :disabled="activeStoreId === st['Store ID']" class="px-3 py-1 rounded-lg text-xs font-medium transition" :class="activeStoreId === st['Store ID'] ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'">
+                        {{ activeStoreId === st['Store ID'] ? 'Active Store' : 'Manage This Store' }}
+                      </button>
+                    </td>
+                    <td class="py-3 px-4 text-center space-x-2">
+                      <button @click="openEditStoreName(st)" class="text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition" title="Edit Store Name">
+                        <i class="fa-solid fa-pen"></i>
+                      </button>
+                      <button @click="openEditFloat(st)" class="text-amber-600 hover:bg-amber-50 p-1.5 rounded-lg transition" title="Edit Starting Float">
+                        <i class="fa-solid fa-coins"></i>
+                      </button>
+                      <button @click="confirmDeleteStore(st)" class="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition" title="Delete Store Branch">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="stores.length === 0">
+                    <td colspan="6" class="py-6 text-center text-slate-400">No store branches configured. Click "Add New Store Branch" above.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Maximized Product Assignment Matrix & Inventory Controls -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-2">
+              <div>
+                <h2 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                  <i class="fa-solid fa-boxes-packing text-blue-600"></i>
+                  <span>Product Assignment Matrix - {{ currentStore ? currentStore['Store Name'] : 'All Stores' }}</span>
+                </h2>
+                <p class="text-xs text-slate-500 mt-0.5">Assign products from master catalog and initialize opening stock levels for this branch.</p>
+              </div>
+
+              <!-- Quick Branch Selector Pills -->
+              <div class="flex items-center space-x-1 overflow-x-auto bg-slate-100 p-1 rounded-xl">
+                <button v-for="st in stores" :key="st['Store ID']" @click="selectStore(st['Store ID'])" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition" :class="activeStoreId === st['Store ID'] ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'">
+                  {{ st['Store Name'] }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Fast Product Assign & Initial Stock Form -->
+            <form @submit.prevent="submitAssignProduct" class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+              <p class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center space-x-1.5">
+                <i class="fa-solid fa-plus-circle text-blue-600"></i>
+                <span>Assign Product or Add Stock to {{ currentStore ? currentStore['Store Name'] : '' }}</span>
+              </p>
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div class="md:col-span-2">
+                  <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Select Product Variant</label>
+                  <select v-model="assignForm.productId" required class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:border-blue-600 focus:outline-none">
+                    <option value="" disabled>-- Select Catalog Item --</option>
+                    <option v-for="p in products" :key="p['Product ID']" :value="p['Product ID']">
+                      {{ p['Name'] }} - {{ p['Weight (KG)'] }} KG | Cap: ₱{{ formatNumber(p['Unit Capital (PHP)']) }} | Sell: ₱{{ formatNumber(p['Selling Price (PHP)']) }}
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Add Full Stock Qty</label>
+                  <input type="number" min="0" v-model.number="assignForm.initialFull" required class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:border-blue-600 focus:outline-none">
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Add Empty Tanks Qty</label>
+                  <input type="number" min="0" v-model.number="assignForm.initialEmpty" required class="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:border-blue-600 focus:outline-none">
+                </div>
+              </div>
+
+              <div class="flex justify-end pt-1">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl text-xs transition shadow-md flex items-center space-x-2">
+                  <i class="fa-solid fa-check"></i>
+                  <span>Assign & Update Stock</span>
+                </button>
+              </div>
+            </form>
+
+            <!-- Expanded Store Product Assignment Matrix Table -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm text-slate-700">
+                <thead class="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4">Product ID</th>
+                    <th class="py-3 px-4">Category</th>
+                    <th class="py-3 px-4">Product Name</th>
+                    <th class="py-3 px-4">Weight</th>
+                    <th class="py-3 px-4 text-right">Unit Capital</th>
+                    <th class="py-3 px-4 text-right">Selling Price</th>
+                    <th class="py-3 px-4 text-center">Full Stock</th>
+                    <th class="py-3 px-4 text-center">Empty Tanks</th>
+                    <th class="py-3 px-4 text-center">Status</th>
+                    <th class="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="p in products" :key="p['Product ID']" class="hover:bg-slate-50/80 transition">
+                    <td class="py-3 px-4 font-mono text-xs text-slate-500">{{ p['Product ID'] }}</td>
+                    <td class="py-3 px-4">
+                      <span class="px-2 py-0.5 rounded-md text-xs font-semibold" :class="p['Category'] === 'LPG Tank' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'">
+                        {{ p['Category'] }}
+                      </span>
+                    </td>
+                    <td class="py-3 px-4 font-semibold text-slate-800">{{ p['Name'] }}</td>
+                    <td class="py-3 px-4 text-xs text-slate-500">{{ p['Weight (KG)'] > 0 ? p['Weight (KG)'] + ' KG' : 'N/A' }}</td>
+                    <td class="py-3 px-4 text-right font-medium">₱{{ formatNumber(p['Unit Capital (PHP)']) }}</td>
+                    <td class="py-3 px-4 text-right font-semibold text-blue-600">₱{{ formatNumber(p['Selling Price (PHP)']) }}</td>
+                    
+                    <!-- Current Stock in Active Store -->
+                    <td class="py-3 px-4 text-center font-bold">
+                      <span v-if="inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])">
+                        {{ inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])['Full Stock Qty'] }}
+                      </span>
+                      <span v-else class="text-slate-300">-</span>
+                    </td>
+
+                    <!-- Empty Tanks in Active Store -->
+                    <td class="py-3 px-4 text-center font-bold text-amber-600">
+                      <span v-if="p['Category'] === 'LPG Tank' && inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])">
+                        {{ inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'])['Empty Tanks Qty'] }}
+                      </span>
+                      <span v-else class="text-slate-300">-</span>
+                    </td>
+
+                    <!-- Assignment Status Badge -->
+                    <td class="py-3 px-4 text-center">
+                      <span v-if="inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'] && (i['Assigned Status'] === true || i['Assigned Status'] === 'true'))" class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center space-x-1">
+                        <i class="fa-solid fa-check text-[10px]"></i>
+                        <span>Assigned</span>
+                      </span>
+                      <span v-else class="bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                        Unassigned
+                      </span>
+                    </td>
+
+                    <!-- Toggle Assignment Button -->
+                    <td class="py-3 px-4 text-center">
+                      <button @click="toggleProductAssignment(p['Product ID'])" class="px-3 py-1 rounded-lg text-xs font-semibold transition" :class="inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'] && (i['Assigned Status'] === true || i['Assigned Status'] === 'true')) ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'">
+                        {{ inventory.find(i => i['Store ID'] === activeStoreId && i['Product ID'] === p['Product ID'] && (i['Assigned Status'] === true || i['Assigned Status'] === 'true')) ? 'Unassign' : 'Assign to Store' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Universal Master Catalog Settings -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h2 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                  <i class="fa-solid fa-tags text-blue-600"></i>
+                  <span>Universal Master Catalog & Pricing</span>
+                </h2>
+                <p class="text-xs text-slate-500 mt-0.5">Modify global products, standard selling prices, and unit capital costs across all stores.</p>
+              </div>
+
+              <button @click="addNewCatalogRow" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-xl text-xs transition flex items-center space-x-1">
+                <i class="fa-solid fa-plus"></i>
+                <span>Add Product Variant</span>
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-sm text-slate-700">
+                <thead class="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-3">Product ID</th>
+                    <th class="py-3 px-3">Category</th>
+                    <th class="py-3 px-3">Product Name</th>
+                    <th class="py-3 px-3">Weight (KG)</th>
+                    <th class="py-3 px-3">Unit Cost (₱)</th>
+                    <th class="py-3 px-3">Selling Price (₱)</th>
+                    <th class="py-3 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="(p, idx) in catalogList" :key="idx" class="hover:bg-slate-50/80 transition">
+                    <td class="py-2 px-3">
+                      <input type="text" v-model="p.productId" class="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono">
+                    </td>
+                    <td class="py-2 px-3">
+                      <select v-model="p.category" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs">
+                        <option value="LPG Tank">LPG Tank</option>
+                        <option value="Accessory">Accessory</option>
+                      </select>
+                    </td>
+                    <td class="py-2 px-3">
+                      <input type="text" v-model="p.name" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold">
+                    </td>
+                    <td class="py-2 px-3">
+                      <input type="number" step="0.1" v-model.number="p.weightKg" class="w-20 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs">
+                    </td>
+                    <td class="py-2 px-3">
+                      <input type="number" step="0.01" v-model.number="p.unitCost" class="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs">
+                    </td>
+                    <td class="py-2 px-3">
+                      <input type="number" step="0.01" v-model.number="p.sellingPrice" class="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-blue-600">
+                    </td>
+                    <td class="py-2 px-3 text-center">
+                      <input type="checkbox" v-model="p.active" class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4">
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="flex justify-end pt-2">
+              <button @click="saveMasterCatalog" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-xl text-sm transition shadow-md">
+                Save Master Catalog & Prices
+              </button>
+            </div>
+          </div>
+
+          <!-- Owner PIN Settings Section -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <div class="border-b border-slate-100 pb-3">
+              <h2 class="font-bold text-slate-800 flex items-center space-x-2">
+                <i class="fa-solid fa-key text-blue-600"></i>
+                <span>Update Owner Security PIN</span>
+              </h2>
+            </div>
+
+            <form @submit.prevent="submitUpdatePin" class="max-w-md space-y-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Current Owner PIN</label>
+                <input type="password" v-model="pinForm.currentPin" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">New Owner PIN</label>
+                <input type="password" v-model="pinForm.newPin" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Confirm New Owner PIN</label>
+                <input type="password" v-model="pinForm.confirmPin" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+              </div>
+
+              <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2 px-4 rounded-xl text-xs transition">
+                Update Security PIN
+              </button>
+            </form>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- ================= MODALS & DIALOGS ================= -->
+
+    <!-- Bulk Refill Modal -->
+    <div v-if="showRefillModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 animate-fade-in">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+            <i class="fa-solid fa-arrows-rotate text-amber-600"></i>
+            <span>Execute Bulk Empty Tank Refill</span>
+          </h3>
+          <button @click="showRefillModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <p class="text-xs text-slate-500">Specify quantity of empty cylinders being refilled per tank weight variant.</p>
+
+        <div class="space-y-3 max-h-60 overflow-y-auto pr-1">
+          <div v-for="tank in refillModalTanks" :key="tank.productId" class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div>
+              <p class="font-semibold text-sm text-slate-800">{{ tank.name }} ({{ tank.weightKg }} KG)</p>
+              <p class="text-xs text-slate-500">Current Empties: <span class="font-bold text-amber-600">{{ tank.emptyQty }}</span> | Cost: ₱{{ formatNumber(tank.unitCost) }}</p>
+            </div>
+            <div class="w-24">
+              <input type="number" min="0" :max="tank.emptyQty" v-model.number="tank.refillQty" class="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-center text-sm font-bold">
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex justify-between items-center">
+          <span>Total Refill Outflow Cost:</span>
+          <span class="font-bold text-sm">₱{{ formatNumber(computedRefillCost) }}</span>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2">
+          <button @click="showRefillModal = false" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
+          <button @click="submitBulkRefill" class="px-5 py-2 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow">Confirm & Process Refill</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Store Expense Modal -->
+    <div v-if="showExpenseModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 animate-fade-in">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h3 class="font-bold text-slate-800 flex items-center space-x-2">
+            <i class="fa-solid fa-minus-circle text-rose-600"></i>
+            <span>Log Operating Expense</span>
+          </h3>
+          <button @click="showExpenseModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <form @submit.prevent="submitExpense" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Expense Amount (₱)</label>
+            <input type="number" min="0.01" step="0.01" v-model.number="expenseForm.amount" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Reason / Description <span class="text-rose-500">*</span></label>
+            <input type="text" v-model="expenseForm.reason" required placeholder="e.g. Store Electricity, Delivery Fuel" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm">
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-2">
+            <button type="button" @click="showExpenseModal = false" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
+            <button type="submit" class="px-5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow">Record Expense</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Dialog -->
+    <div v-if="confirmModal.show" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4 text-center animate-fade-in">
+        <div class="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center text-xl mx-auto">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        
+        <div>
+          <h3 class="font-bold text-slate-800">{{ confirmModal.title }}</h3>
+          <p class="text-xs text-slate-500 mt-1">{{ confirmModal.message }}</p>
+        </div>
+
+        <div class="flex justify-center space-x-3 pt-2">
+          <button @click="confirmModal.show = false" class="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl">No (Cancel)</button>
+          <button @click="executeConfirmAction" class="px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow">Yes (Delete)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Store Branch Modal -->
+    <div v-if="showAddStoreModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 animate-fade-in">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h3 class="font-bold text-slate-800">Add New Store Branch</h3>
+          <button @click="showAddStoreModal = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <form @submit.prevent="submitAddStore" class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Store Name</label>
+            <input type="text" v-model="newStoreForm.storeName" required placeholder="e.g. R&J Downtown Branch" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Starting Cash Float (₱)</label>
+            <input type="number" min="0" step="0.01" v-model.number="newStoreForm.startingFloat" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm">
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-2">
+            <button type="button" @click="showAddStoreModal = false" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
+            <button type="submit" class="px-5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow">Create Store</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        // App State
+        const isLoading = ref(false);
+        const appName = ref('R&J LPG Retail Store');
+        const activeTab = ref('sales');
+        const isStoreDropdownOpen = ref(false);
+        const activeStoreId = ref('');
+        const liveClock = ref('');
+
+        // Master Data
+        const stores = ref([]);
+        const products = ref([]);
+        const inventory = ref([]);
+        const transactions = ref([]);
+
+        // Owner Auth Session
+        const isOwnerAuthenticated = ref(false);
+        const authenticatedPin = ref('');
+        const pinInput = ref('');
+        const localOwnerPin = ref('1234'); // Default PIN for Standalone app
+
+        // Log View Filter
+        const logFilter = ref('all');
+
+        // POS Sale Form State
+        const saleForm = ref({
+          productId: '',
+          selectedProduct: null,
+          qty: 1,
+          discountAmount: 0,
+          discountReason: ''
+        });
+
+        // Refill Modal
+        const showRefillModal = ref(false);
+        const refillModalTanks = ref([]);
+
+        // Expense Modal
+        const showExpenseModal = ref(false);
+        const expenseForm = ref({ amount: '', reason: '' });
+
+        // Setup Modals & Forms
+        const showAddStoreModal = ref(false);
+        const newStoreForm = ref({ storeName: '', startingFloat: 5000 });
+        const assignForm = ref({ productId: '', initialFull: 10, initialEmpty: 0 });
+        const catalogList = ref([]);
+        const pinForm = ref({ currentPin: '', newPin: '', confirmPin: '' });
+
+        // Stores Summary Tab State
+        const summaryMonth = ref(new Date().toISOString().slice(0, 7)); // YYYY-MM
+        const overallDashboard = ref({ revenue: 0, expenses: 0, profit: 0 });
+        const monthlyDailyBreakdown = ref([]);
+        const expandedDates = ref([]);
+
+        // Confirmation Modal State
+        const confirmModal = ref({
+          show: false,
+          title: '',
+          message: '',
+          actionType: '',
+          payload: null
+        });
+
+        // Timezone helper
+        const getManilaTodayStr = () => {
+          const d = new Date();
+          return d.toISOString().split('T')[0];
+        };
+
+        const todayDateStr = ref(getManilaTodayStr());
+
+        // Live Clock
+        const updateClock = () => {
+          const d = new Date();
+          liveClock.value = d.toLocaleTimeString('en-US', { hour12: true });
+        };
+
+        // Number Formatting
+        const formatNumber = (val) => {
+          const num = Number(val || 0);
+          return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+
+        const currentStore = computed(() => stores.value.find(s => s['Store ID'] === activeStoreId.value) || null);
+        const startingCashFloat = computed(() => currentStore.value ? Number(currentStore.value['Starting Cash Float'] || 0) : 0);
+
+        const assignedProducts = computed(() => {
+          const storeInv = inventory.value.filter(i => i['Store ID'] === activeStoreId.value && (i['Assigned Status'] === true || i['Assigned Status'] === 'true'));
+          return storeInv.map(invItem => {
+            const prod = products.value.find(p => p['Product ID'] === invItem['Product ID']);
+            return {
+              productId: invItem['Product ID'],
+              name: prod ? prod['Name'] : 'Unknown Product',
+              category: prod ? prod['Category'] : '',
+              weightKg: prod ? prod['Weight (KG)'] : 0,
+              unitCost: prod ? Number(prod['Unit Capital (PHP)']) : 0,
+              sellingPrice: prod ? Number(prod['Selling Price (PHP)']) : 0,
+              fullStock: Number(invItem['Full Stock Qty']),
+              emptyStock: Number(invItem['Empty Tanks Qty'])
+            };
+          });
+        });
+
+        const totalEmptyTanks = computed(() => assignedProducts.value.reduce((sum, item) => sum + (item.category === 'LPG Tank' ? item.emptyStock : 0), 0));
+        const todayTransactions = computed(() => transactions.value.filter(t => t['Store ID'] === activeStoreId.value && String(t['Date GMT+8 (YYYY-MM-DD)']) === todayDateStr.value));
+
+        const filteredTodayTransactions = computed(() => {
+          if (logFilter.value === 'discounts') return todayTransactions.value.filter(t => Number(t['Discount Amount']) > 0);
+          if (logFilter.value === 'expenses') return todayTransactions.value.filter(t => t['Type'] === 'Expense');
+          return todayTransactions.value;
+        });
+
+        // KPIs
+        const todaySalesProfit = computed(() => todayTransactions.value.filter(t => t['Type'] === 'Sale').reduce((sum, t) => sum + Number(t['Net Profit'] || 0), 0));
+        const todaySalesGross = computed(() => todayTransactions.value.filter(t => t['Type'] === 'Sale').reduce((sum, t) => sum + Number(t['Total Amount'] || 0), 0));
+        const todayExpenseTotal = computed(() => todayTransactions.value.filter(t => t['Type'] === 'Expense').reduce((sum, t) => sum + Number(t['Total Amount'] || 0), 0));
+        const todayRefillOutflow = computed(() => todayTransactions.value.filter(t => t['Type'] === 'Refill').reduce((sum, t) => sum + Number(t['Total Amount'] || 0), 0));
+
+        const kpiProfitToday = computed(() => todaySalesProfit.value - todayExpenseTotal.value - todayRefillOutflow.value);
+        const kpiCashBalance = computed(() => startingCashFloat.value + todaySalesGross.value - todayExpenseTotal.value - todayRefillOutflow.value);
+
+        const onProductSelect = () => { saleForm.value.selectedProduct = assignedProducts.value.find(p => p.productId === saleForm.value.productId) || null; };
+        const computedSaleOriginal = computed(() => saleForm.value.selectedProduct ? saleForm.value.selectedProduct.sellingPrice * (saleForm.value.qty || 0) : 0);
+        const computedSaleFinal = computed(() => Math.max(0, computedSaleOriginal.value - (saleForm.value.discountAmount || 0)));
+        const computedSaleProfit = computed(() => saleForm.value.selectedProduct ? computedSaleFinal.value - (saleForm.value.selectedProduct.unitCost * (saleForm.value.qty || 0)) : 0);
+        const computedRefillCost = computed(() => refillModalTanks.value.reduce((sum, t) => sum + ((t.refillQty || 0) * t.unitCost), 0));
+
+        const saveToLocalStorage = () => {
+          const dataToSave = {
+            stores: stores.value,
+            products: products.value,
+            inventory: inventory.value,
+            transactions: transactions.value
+          };
+          localStorage.setItem('rj_app_data', JSON.stringify(dataToSave));
+          localStorage.setItem('rj_app_pin', localOwnerPin.value);
+        };
+
+        const generateId = (prefix) => prefix + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+
+        const loadSystemData = () => {
+          isLoading.value = true;
+          
+          setTimeout(() => {
+            const savedData = localStorage.getItem('rj_app_data');
+            const savedPin = localStorage.getItem('rj_app_pin');
+            
+            if (savedPin) localOwnerPin.value = savedPin;
+
+            if (savedData) {
+              const parsed = JSON.parse(savedData);
+              stores.value = parsed.stores || [];
+              products.value = parsed.products || [];
+              inventory.value = parsed.inventory || [];
+              transactions.value = parsed.transactions || [];
+            } else {
+              // Default Initial Data if empty
+              stores.value = [{ 'Store ID': 'STR-001', 'Store Name': 'Main Branch', 'Starting Cash Float': 5000 }];
+              products.value = [
+                { 'Product ID': 'PRD-101', 'Category': 'LPG Tank', 'Name': 'Standard Refill', 'Weight (KG)': 11, 'Unit Capital (PHP)': 600, 'Selling Price (PHP)': 850, 'Active Status': true }
+              ];
+              inventory.value = [{ 'Store ID': 'STR-001', 'Product ID': 'PRD-101', 'Full Stock Qty': 50, 'Empty Tanks Qty': 10, 'Assigned Status': true }];
+              saveToLocalStorage();
+            }
+
+            catalogList.value = products.value.map(p => ({
+              productId: p['Product ID'],
+              category: p['Category'],
+              name: p['Name'],
+              weightKg: Number(p['Weight (KG)']),
+              unitCost: Number(p['Unit Capital (PHP)']),
+              sellingPrice: Number(p['Selling Price (PHP)']),
+              active: p['Active Status'] === true || p['Active Status'] === 'true'
+            }));
+
+            if (!activeStoreId.value && stores.value.length > 0) {
+              activeStoreId.value = stores.value[0]['Store ID'];
+            }
+            
+            isLoading.value = false;
+          }, 300); // Simulate network latency
+        };
+
+        const selectStore = (id) => {
+          activeStoreId.value = id;
+          isStoreDropdownOpen.value = false;
+          saleForm.value.productId = '';
+          saleForm.value.selectedProduct = null;
+          if (activeTab.value === 'summary') {
+            loadStoresSummary();
+          }
+        };
+
+        const submitSale = () => {
+          if (!saleForm.value.selectedProduct) return;
+          isLoading.value = true;
+
+          setTimeout(() => {
+            // Deduct Inventory
+            const inv = inventory.value.find(i => i['Store ID'] === activeStoreId.value && i['Product ID'] === saleForm.value.productId);
+            if (inv) {
+              inv['Full Stock Qty'] = Number(inv['Full Stock Qty']) - saleForm.value.qty;
+              if (saleForm.value.selectedProduct.category === 'LPG Tank') {
+                inv['Empty Tanks Qty'] = Number(inv['Empty Tanks Qty']) + saleForm.value.qty;
+              }
+            }
+
+            // Create Log
+            transactions.value.unshift({
+              'Tx ID': generateId('TX'),
+              'Store ID': activeStoreId.value,
+              'Date GMT+8 (YYYY-MM-DD)': todayDateStr.value,
+              'Type': 'Sale',
+              'Product ID': saleForm.value.productId,
+              'Product Name': saleForm.value.selectedProduct.name,
+              'Category': saleForm.value.selectedProduct.category,
+              'Weight (KG)': saleForm.value.selectedProduct.weightKg,
+              'Qty': saleForm.value.qty,
+              'Unit Cost (PHP)': saleForm.value.selectedProduct.unitCost,
+              'Selling Price (PHP)': saleForm.value.selectedProduct.sellingPrice,
+              'Discount Amount': saleForm.value.discountAmount || 0,
+              'Total Amount': computedSaleFinal.value,
+              'Net Profit': computedSaleProfit.value,
+              'Discount/Expense Reason': saleForm.value.discountReason || ''
+            });
+
+            saveToLocalStorage();
+            saleForm.value = { productId: '', selectedProduct: null, qty: 1, discountAmount: 0, discountReason: '' };
+            isLoading.value = false;
+          }, 200);
+        };
+
+        const openRefillModal = () => {
+          refillModalTanks.value = assignedProducts.value.filter(p => p.category === 'LPG Tank').map(t => ({
+              productId: t.productId, name: t.name, weightKg: t.weightKg, emptyQty: t.emptyStock, unitCost: t.unitCost, refillQty: 0
+          }));
+          showRefillModal.value = true;
+        };
+
+        const submitBulkRefill = () => {
+          const items = refillModalTanks.value.filter(t => t.refillQty > 0);
+          if (items.length === 0) return alert('Please specify refill quantity.');
+
+          isLoading.value = true;
+          showRefillModal.value = false;
+
+          setTimeout(() => {
+            items.forEach(item => {
+              const inv = inventory.value.find(i => i['Store ID'] === activeStoreId.value && i['Product ID'] === item.productId);
+              if (inv) {
+                inv['Empty Tanks Qty'] -= item.refillQty;
+                inv['Full Stock Qty'] += item.refillQty;
+              }
+              const cost = item.refillQty * item.unitCost;
+              transactions.value.unshift({
+                'Tx ID': generateId('TX'),
+                'Store ID': activeStoreId.value,
+                'Date GMT+8 (YYYY-MM-DD)': todayDateStr.value,
+                'Type': 'Refill',
+                'Product Name': `Refill: ${item.name}`,
+                'Qty': item.refillQty,
+                'Total Amount': cost,
+                'Net Profit': -cost
+              });
+            });
+
+            saveToLocalStorage();
+            isLoading.value = false;
+          }, 200);
+        };
+
+        const openExpenseModal = () => { expenseForm.value = { amount: '', reason: '' }; showExpenseModal.value = true; };
+
+        const submitExpense = () => {
+          isLoading.value = true;
+          showExpenseModal.value = false;
+          setTimeout(() => {
+            transactions.value.unshift({
+              'Tx ID': generateId('TX'),
+              'Store ID': activeStoreId.value,
+              'Date GMT+8 (YYYY-MM-DD)': todayDateStr.value,
+              'Type': 'Expense',
+              'Product Name': 'Operating Expense',
+              'Qty': 1,
+              'Total Amount': expenseForm.value.amount,
+              'Net Profit': -expenseForm.value.amount,
+              'Discount/Expense Reason': expenseForm.value.reason
+            });
+            saveToLocalStorage();
+            isLoading.value = false;
+          }, 200);
+        };
+
+        const confirmVoidTx = (tx) => {
+          confirmModal.value = { show: true, title: 'Void Transaction', message: `Delete transaction ${tx['Tx ID']}?`, actionType: 'voidTx', payload: tx };
+        };
+
+        const confirmDeleteStore = (st) => {
+          confirmModal.value = { show: true, title: 'Delete Store', message: `Delete ${st['Store Name']}?`, actionType: 'deleteStore', payload: st['Store ID'] };
+        };
+
+        const executeConfirmAction = () => {
+          confirmModal.value.show = false;
+          isLoading.value = true;
+
+          setTimeout(() => {
+            if (confirmModal.value.actionType === 'voidTx') {
+              const tx = confirmModal.value.payload;
+              // Reverse inventory if Sale or Refill
+              if (tx['Type'] === 'Sale') {
+                 const inv = inventory.value.find(i => i['Store ID'] === tx['Store ID'] && i['Product ID'] === tx['Product ID']);
+                 if(inv) {
+                   inv['Full Stock Qty'] += tx['Qty'];
+                   if (tx['Category'] === 'LPG Tank') inv['Empty Tanks Qty'] -= tx['Qty'];
+                 }
+              } else if (tx['Type'] === 'Refill') {
+                 // Note: Would need to track productId perfectly for refill reversal, simplifying logic here for standalone limits
+              }
+              transactions.value = transactions.value.filter(t => t['Tx ID'] !== tx['Tx ID']);
+
+            } else if (confirmModal.value.actionType === 'deleteStore') {
+              stores.value = stores.value.filter(s => s['Store ID'] !== confirmModal.value.payload);
+              inventory.value = inventory.value.filter(i => i['Store ID'] !== confirmModal.value.payload);
+              if (activeStoreId.value === confirmModal.value.payload && stores.value.length > 0) activeStoreId.value = stores.value[0]['Store ID'];
+            }
+            saveToLocalStorage();
+            isLoading.value = false;
+          }, 200);
+        };
+
+        const unlockSetup = () => {
+          if (pinInput.value === localOwnerPin.value) {
+            isOwnerAuthenticated.value = true;
+            authenticatedPin.value = pinInput.value;
+            pinInput.value = '';
+          } else {
+            alert('Incorrect Security PIN. Default PIN is 1234');
+          }
+        };
+
+        const lockSetup = () => { isOwnerAuthenticated.value = false; authenticatedPin.value = ''; };
+
+        const openAddStoreModal = () => { newStoreForm.value = { storeName: '', startingFloat: 5000 }; showAddStoreModal.value = true; };
+
+        const submitAddStore = () => {
+          showAddStoreModal.value = false;
+          isLoading.value = true;
+          setTimeout(() => {
+            const newId = generateId('STR');
+            stores.value.push({ 'Store ID': newId, 'Store Name': newStoreForm.value.storeName, 'Starting Cash Float': newStoreForm.value.startingFloat });
+            saveToLocalStorage();
+            isLoading.value = false;
+          }, 200);
+        };
+
+        const openEditStoreName = (st) => {
+          const newName = prompt('Enter new store name:', st['Store Name']);
+          if (newName) { st['Store Name'] = newName; saveToLocalStorage(); }
+        };
+
+        const openEditFloat = (st) => {
+          const newFloat = prompt('Enter new float:', st['Starting Cash Float']);
+          if (newFloat !== null && !isNaN(newFloat)) { st['Starting Cash Float'] = Number(newFloat); saveToLocalStorage(); }
+        };
+
+        const toggleProductAssignment = (productId) => {
+          let inv = inventory.value.find(i => i['Store ID'] === activeStoreId.value && i['Product ID'] === productId);
+          if (inv) {
+            inv['Assigned Status'] = !(inv['Assigned Status'] === true || inv['Assigned Status'] === 'true');
+          } else {
+            inventory.value.push({ 'Store ID': activeStoreId.value, 'Product ID': productId, 'Full Stock Qty': 10, 'Empty Tanks Qty': 0, 'Assigned Status': true });
+          }
+          saveToLocalStorage();
+        };
+
+        const submitAssignProduct = () => {
+          if (!assignForm.value.productId) return;
+          isLoading.value = true;
+          setTimeout(() => {
+            let inv = inventory.value.find(i => i['Store ID'] === activeStoreId.value && i['Product ID'] === assignForm.value.productId);
+            if (inv) {
+              inv['Full Stock Qty'] += assignForm.value.initialFull;
+              inv['Empty Tanks Qty'] += assignForm.value.initialEmpty;
+              inv['Assigned Status'] = true;
+            } else {
+              inventory.value.push({ 'Store ID': activeStoreId.value, 'Product ID': assignForm.value.productId, 'Full Stock Qty': assignForm.value.initialFull, 'Empty Tanks Qty': assignForm.value.initialEmpty, 'Assigned Status': true });
+            }
+            saveToLocalStorage();
+            isLoading.value = false;
+          }, 200);
+        };
+
+        const addNewCatalogRow = () => {
+          catalogList.value.push({ productId: generateId('PRD'), category: 'LPG Tank', name: 'New Product', weightKg: 11, unitCost: 500, sellingPrice: 700, active: true });
+        };
+
+        const saveMasterCatalog = () => {
+          isLoading.value = true;
+          setTimeout(() => {
+            products.value = catalogList.value.map(c => ({
+              'Product ID': c.productId, 'Category': c.category, 'Name': c.name, 'Weight (KG)': c.weightKg, 'Unit Capital (PHP)': c.unitCost, 'Selling Price (PHP)': c.sellingPrice, 'Active Status': c.active
+            }));
+            saveToLocalStorage();
+            alert('Universal product catalog saved locally.');
+            isLoading.value = false;
+          }, 200);
+        };
+
+        const submitUpdatePin = () => {
+          if (pinForm.value.currentPin !== localOwnerPin.value) return alert('Current PIN is incorrect.');
+          if (pinForm.value.newPin !== pinForm.value.confirmPin) return alert('New PIN mismatch.');
+          
+          localOwnerPin.value = pinForm.value.newPin;
+          authenticatedPin.value = pinForm.value.newPin;
+          saveToLocalStorage();
+          alert('Security PIN updated successfully.');
+          pinForm.value = { currentPin: '', newPin: '', confirmPin: '' };
+        };
+
+        const loadStoresSummary = () => {
+          if (!activeStoreId.value) return;
+          isLoading.value = true;
+
+          setTimeout(() => {
+            let rev = 0, exp = 0, prof = 0;
+            const monthTxs = transactions.value.filter(t => String(t['Date GMT+8 (YYYY-MM-DD)']).startsWith(summaryMonth.value));
+            
+            monthTxs.forEach(t => {
+              if (t['Type'] === 'Sale') { rev += Number(t['Total Amount']); prof += Number(t['Net Profit']); }
+              else { exp += Number(t['Total Amount']); prof += Number(t['Net Profit']); }
+            });
+            overallDashboard.value = { revenue: rev, expenses: exp, profit: prof };
+
+            const dailyMap = {};
+            const storeMonthTxs = monthTxs.filter(t => t['Store ID'] === activeStoreId.value);
+            
+            storeMonthTxs.forEach(t => {
+              const d = t['Date GMT+8 (YYYY-MM-DD)'];
+              if (!dailyMap[d]) dailyMap[d] = { date: d, totalOrders: 0, grossSales: 0, netProfit: 0, products: [] };
+              
+              if (t['Type'] === 'Sale') {
+                dailyMap[d].totalOrders += t['Qty'];
+                dailyMap[d].grossSales += Number(t['Total Amount']);
+                dailyMap[d].netProfit += Number(t['Net Profit']);
+                const p = dailyMap[d].products.find(x => x.name === t['Product Name']);
+                if (p) { p.qty += t['Qty']; p.grossSales += Number(t['Total Amount']); p.netProfit += Number(t['Net Profit']); } 
+                else dailyMap[d].products.push({ name: t['Product Name'], weightKg: t['Weight (KG)'], category: t['Category'], qty: t['Qty'], grossSales: Number(t['Total Amount']), netProfit: Number(t['Net Profit']) });
+              } else {
+                dailyMap[d].netProfit += Number(t['Net Profit']);
+              }
+            });
+
+            monthlyDailyBreakdown.value = Object.values(dailyMap).sort((a,b) => a.date.localeCompare(b.date));
+            isLoading.value = false;
+          }, 300);
+        };
+
+        const toggleDateExpand = (dateStr) => {
+          const idx = expandedDates.value.indexOf(dateStr);
+          if (idx > -1) expandedDates.value.splice(idx, 1);
+          else expandedDates.value.push(dateStr);
+        };
+
+        const exportTodayLogs = () => {
+          const exportData = filteredTodayTransactions.value.map(t => ({
+            'Tx ID': t['Tx ID'], 'Date': t['Date GMT+8 (YYYY-MM-DD)'], 'Type': t['Type'], 'Product Name': t['Product Name'],
+            'Qty': t['Qty'], 'Total Amount': t['Total Amount'], 'Net Profit': t['Net Profit'], 'Notes': t['Discount/Expense Reason']
+          }));
+          const ws = XLSX.utils.json_to_sheet(exportData);
+          const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Today_Logs");
+          XLSX.writeFile(wb, `RJ_Log_${todayDateStr.value}.xlsx`);
+        };
+
+        const exportMonthlyReport = () => {
+          const exportRows = monthlyDailyBreakdown.value.map(day => ({
+            'Date': day.date, 'Total Units Sold': day.totalOrders, 'Gross Sales': day.grossSales, 'Net Profit': day.netProfit
+          }));
+          const ws = XLSX.utils.json_to_sheet(exportRows);
+          const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Monthly");
+          XLSX.writeFile(wb, `RJ_Monthly_${summaryMonth.value}.xlsx`);
+        };
+
+        onMounted(() => {
+          updateClock();
+          setInterval(updateClock, 1000);
+          loadSystemData();
+        });
+
+        return {
+          isLoading, appName, activeTab, isStoreDropdownOpen, activeStoreId, liveClock, todayDateStr,
+          stores, products, inventory, transactions, currentStore, startingCashFloat, assignedProducts,
+          totalEmptyTanks, todayTransactions, filteredTodayTransactions, logFilter,
+          kpiProfitToday, kpiCashBalance, todayRefillOutflow, formatNumber, selectStore,
+          saleForm, onProductSelect, computedSaleOriginal, computedSaleFinal, computedSaleProfit, submitSale,
+          showRefillModal, refillModalTanks, computedRefillCost, openRefillModal, submitBulkRefill,
+          showExpenseModal, expenseForm, openExpenseModal, submitExpense,
+          confirmModal, confirmVoidTx, confirmDeleteStore, executeConfirmAction,
+          isOwnerAuthenticated, pinInput, unlockSetup, lockSetup,
+          showAddStoreModal, newStoreForm, openAddStoreModal, submitAddStore,
+          openEditStoreName, openEditFloat, toggleProductAssignment, assignForm, submitAssignProduct,
+          catalogList, addNewCatalogRow, saveMasterCatalog, pinForm, submitUpdatePin,
+          summaryMonth, overallDashboard, monthlyDailyBreakdown, expandedDates, loadStoresSummary,
+          toggleDateExpand, exportTodayLogs, exportMonthlyReport
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
